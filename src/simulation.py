@@ -5,27 +5,27 @@ import pygame # Used for graphical visualization
 # --- Simulation Parameters ---
 # Physical properties of the machine's body
 M_BODY = 1.0  # Mass of the body (kg)
-L_BODY = 1.5  # Distance from pivot to center of mass of the body (m) - USER CHANGE
+L_BODY = 1.4  # Distance from pivot to center of mass of the body (m) - USER CHANGE
 I_BODY = M_BODY * L_BODY**2 / 3  # Moment of inertia of a rod about one end (kg*m^2)
                                  # This is a simplification; adjust based on actual body shape.
 
 M_WHEEL = 0.1 # Mass of the wheel (kg) - Added for total mass calculation
 
-G = 9.81      # Acceleration due to gravity (m/s^2)
+G = 4.81      # Acceleration due to gravity (m/s^2)
 
 # Simulation time parameters
 DT = 0.01     # Time step (s) - USER CHANGE
 MAX_ANGLE_TIPPING_RAD = math.radians(90) # Angle at which the machine is considered tipped (90 degrees)
 
 # Horizontal movement control parameters
-MOVE_SPEED = 2.0 # Constant velocity for horizontal movement (m/s)
+MOVE_SPEED = 1.8 # Constant velocity for horizontal movement (m/s)
 # NEW: Torque applied to the body when moving horizontally.
 # This simulates the reaction torque on the body when the wheel exerts force to move.
 HORIZONTAL_TORQUE_EFFECT = 20.0 # Nm (Adjust this value to feel the effect)
 
 # --- Initial Conditions ---
 # Random initial angle between -45 and +45 degrees
-initial_angle_deg = random.uniform(-45, 45)
+initial_angle_deg = random.uniform(-5, 5)
 theta = math.radians(initial_angle_deg) # Current angle of the body (radians)
 theta_dot = 0.0                         # Current angular velocity of the body (radians/s)
 
