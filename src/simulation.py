@@ -4,44 +4,45 @@ import pygame # Used for graphical visualization
 
 # --- Simulation Parameters ---
 # Physical properties of the machine's body
-M_BODY = 1.0  # Mass of the body (kg)
-L_BODY = 1.4  # Distance from pivot to center of mass of the body (m) - USER CHANGE
+M_BODY = 80.0  # Mass of the body (kg) - USER CHANGE
+L_BODY = 0.9  # Distance from pivot to center of mass of the body (m) - USER CHANGE
 I_BODY = M_BODY * L_BODY**2 / 3  # Moment of inertia of a rod about one end (kg*m^2)
                                  # This is a simplification; adjust based on actual body shape.
 
-M_WHEEL = 0.1 # Mass of the wheel (kg) - Added for total mass calculation
+M_WHEEL = 2.0 # Mass of the wheel (kg)
+WHEEL_RADIUS_M = 0.25 # Radius of the wheel in meters (e.g., 5 cm) - USER CHANGE
 
-G = 4.81      # Acceleration due to gravity (m/s^2)
+G = 9.81      # Acceleration due to gravity (m/s^2)
 
 # Simulation time parameters
 DT = 0.01     # Time step (s) - USER CHANGE
 MAX_ANGLE_TIPPING_RAD = math.radians(90) # Angle at which the machine is considered tipped (90 degrees)
 
-# Horizontal movement control parameters
-MOVE_SPEED = 1.8 # Constant velocity for horizontal movement (m/s)
-# NEW: Torque applied to the body when moving horizontally.
-# This simulates the reaction torque on the body when the wheel exerts force to move.
-HORIZONTAL_TORQUE_EFFECT = 20.0 # Nm (Adjust this value to feel the effect)
+# Motor control parameters
+# This is the maximum torque the motor can apply to the wheel
+MAX_MOTOR_TORQUE = 600.0 # Nm (Adjust this value to control how powerful the horizontal movement is)
 
 # --- Initial Conditions ---
 # Random initial angle between -45 and +45 degrees
-initial_angle_deg = random.uniform(-5, 5)
+initial_angle_deg = random.uniform(-2, 2) # USER CHANGE
 theta = math.radians(initial_angle_deg) # Current angle of the body (radians)
 theta_dot = 0.0                         # Current angular velocity of the body (radians/s)
 
 # Initial horizontal position and velocity of the machine's pivot
-# x_position_meters is relative to the initial center of the screen (0.0 means center)
 x_position_meters = 0.0
 x_velocity_meters_per_sec = 0.0 # Horizontal velocity (m/s)
+
+# Current motor torque commanded by the user
+current_motor_torque_command = 0.0 # Nm
 
 print(f"Simulation started with initial angle: {initial_angle_deg:.2f}°")
 
 # --- Pygame Setup ---
 pygame.init()
 
-# Screen dimensions - USER CHANGE
-SCREEN_WIDTH = 1200
-SCREEN_HEIGHT = 800
+# Screen dimensions
+SCREEN_WIDTH = 2200 # USER CHANGE
+SCREEN_HEIGHT = 800 # USER CHANGE
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Self-Balancing Machine Simulation")
 
@@ -59,12 +60,13 @@ GROUND_Y = SCREEN_HEIGHT - 100
 # Machine drawing parameters (pixels)
 # Scale factor to convert meters to pixels for drawing
 PIXELS_PER_METER = 200
-WHEEL_RADIUS_PX = 30
-BODY_WIDTH_PX = 25 # USER CHANGE
+# NEW: Calculate WHEEL_RADIUS_PX based on WHEEL_RADIUS_M
+WHEEL_RADIUS_PX = int(WHEEL_RADIUS_M * PIXELS_PER_METER)
+BODY_WIDTH_PX = 25 # USER CHANGE - This remains a fixed pixel thickness for the line
 
 # Initial pivot point for the machine (center of the wheel)
 initial_pivot_x = SCREEN_WIDTH // 2
-# Corrected pivot_y so the wheel sits on the ground
+# NEW: pivot_y is the Y-coordinate of the wheel's center
 pivot_y = GROUND_Y - WHEEL_RADIUS_PX
 
 font = pygame.font.Font(None, 36) # Font for displaying text
@@ -76,8 +78,8 @@ running = True
 tipped = False
 time = 0.0
 
-# Variable to store the current horizontal movement command (-1 for left, 0 for stop, 1 for right)
-horizontal_movement_command = 0
+# Variable to store the current motor torque commanded by the user
+current_motor_torque_command = 0.0 # Nm
 
 while running:
     # Event handling for keyboard input
@@ -86,25 +88,21 @@ while running:
             running = False
         elif event.type == pygame.KEYDOWN:
             if event.key == pygame.K_a:
-                horizontal_movement_command = -1 # Command to move left
+                current_motor_torque_command = -MAX_MOTOR_TORQUE # Apply negative torque (move left)
             elif event.key == pygame.K_d:
-                horizontal_movement_command = 1 # Command to move right
+                current_motor_torque_command = MAX_MOTOR_TORQUE # Apply positive torque (move right)
         elif event.type == pygame.KEYUP:
             if event.key == pygame.K_a or event.key == pygame.K_d:
-                horizontal_movement_command = 0 # Stop command when key is released
+                current_motor_torque_command = 0.0 # Stop applying torque when key is released
 
     if not tipped:
-        # Set horizontal velocity based on the current command
-        x_velocity_meters_per_sec = horizontal_movement_command * MOVE_SPEED
-
         # 1. Calculate Gravitational Torque
         tau_gravity = M_BODY * G * L_BODY * math.sin(theta)
 
-        # 2. Corrective Torque from Wheel (influenced by horizontal movement)
-        # If moving right (horizontal_movement_command = 1), the wheel pushes ground left.
-        # Reaction on wheel is right. This tends to push the body to lean left (counter-clockwise).
-        # So, a positive command should result in a negative torque for the body's angle.
-        tau_corrective = -horizontal_movement_command * HORIZONTAL_TORQUE_EFFECT
+        # 2. Corrective Torque on Body (Reaction from Wheel Motor)
+        # When the motor applies torque to the wheel, the wheel applies an equal and opposite
+        # reaction torque on the body. This is the 'tau_corrective' that influences the body's angle.
+        tau_corrective = -current_motor_torque_command
 
         # 3. Calculate Net Torque on the body
         tau_net = tau_gravity + tau_corrective
@@ -116,8 +114,19 @@ while running:
         theta_dot += theta_double_dot * DT
         theta += theta_dot * DT
 
-        # --- Horizontal Motion (User Controlled) ---
-        # Update horizontal position based on user-controlled velocity
+        # --- Horizontal Motion (Driven by Motor Torque) ---
+        # The horizontal force generated by the wheel is related to the motor torque.
+        # F_horizontal = Motor Torque / Wheel Radius (assuming no slip)
+        # The direction of the force is the same as the motor torque (positive for right, negative for left)
+        if WHEEL_RADIUS_M > 0: # Avoid division by zero
+            F_horizontal = current_motor_torque_command / WHEEL_RADIUS_M
+        else:
+            F_horizontal = 0.0 # No horizontal force if wheel radius is zero
+
+        TOTAL_MASS = M_BODY + M_WHEEL
+        x_double_dot_meters_per_sec_sq = F_horizontal / TOTAL_MASS
+
+        x_velocity_meters_per_sec += x_double_dot_meters_per_sec_sq * DT
         x_position_meters += x_velocity_meters_per_sec * DT
 
         # 6. Check for Tipping
@@ -138,19 +147,21 @@ while running:
 
     # Draw Wheel
     # Ensure coordinates are integers for pygame drawing functions
-    pygame.draw.circle(screen, GRAY, (int(current_pivot_x), pivot_y + WHEEL_RADIUS_PX), WHEEL_RADIUS_PX, 0)
-    pygame.draw.circle(screen, BLACK, (int(current_pivot_x), pivot_y + WHEEL_RADIUS_PX), WHEEL_RADIUS_PX, 2) # Outline
+    # The center of the circle is (current_pivot_x, pivot_y) and radius is WHEEL_RADIUS_PX
+    pygame.draw.circle(screen, GRAY, (int(current_pivot_x), int(pivot_y)), WHEEL_RADIUS_PX, 0)
+    pygame.draw.circle(screen, BLACK, (int(current_pivot_x), int(pivot_y)), WHEEL_RADIUS_PX, 2) # Outline
 
     # Calculate body end point
     # Note: Pygame's Y-axis increases downwards, so we subtract for upward movement.
+    # The body starts from the wheel's center (current_pivot_x, pivot_y)
     body_end_x = int(current_pivot_x + L_BODY * PIXELS_PER_METER * math.sin(theta))
     body_end_y = int(pivot_y - L_BODY * PIXELS_PER_METER * math.cos(theta))
 
     # Draw Body (as a line for simplicity)
-    pygame.draw.line(screen, BLUE, (int(current_pivot_x), pivot_y), (body_end_x, body_end_y), BODY_WIDTH_PX)
+    pygame.draw.line(screen, BLUE, (int(current_pivot_x), int(pivot_y)), (body_end_x, body_end_y), BODY_WIDTH_PX)
 
-    # Draw pivot point
-    pygame.draw.circle(screen, RED, (int(current_pivot_x), pivot_y), 5)
+    # Draw pivot point (at the center of the wheel)
+    pygame.draw.circle(screen, RED, (int(current_pivot_x), int(pivot_y)), 5)
 
     # Display status text
     status_text = ""
@@ -174,10 +185,13 @@ while running:
     x_vel_text_surface = font.render(f"X Vel: {x_velocity_meters_per_sec:.2f} m/s", True, BLACK)
     screen.blit(x_vel_text_surface, (10, 130))
 
+    # Display motor torque
+    motor_torque_text_surface = font.render(f"Motor Torque: {current_motor_torque_command:.2f} Nm", True, BLACK)
+    screen.blit(motor_torque_text_surface, (10, 170))
 
     pygame.display.flip() # Update the full display Surface to the screen
 
     # Cap the frame rate
-    clock.tick(60) # 30 frames per second
+    clock.tick(60) # USER CHANGE - Changed back to 60 FPS for smoother visuals
 
 pygame.quit()
