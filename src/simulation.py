@@ -1,6 +1,7 @@
 import math
 import random
 import pygame # Used for graphical visualization
+from Controller import ProportionalController, PIController, PIDController
 
 # --- Simulation Parameters ---
 # Physical properties of the machine's body
@@ -9,13 +10,13 @@ L_BODY = 0.9  # Distance from pivot to center of mass of the body (m) - USER CHA
 I_BODY = M_BODY * L_BODY**2 / 3  # Moment of inertia of a rod about one end (kg*m^2)
                                  # This is a simplification; adjust based on actual body shape.
 
-M_WHEEL = 2.0 # Mass of the wheel (kg)
+M_WHEEL = 1.0 # Mass of the wheel (kg)
 WHEEL_RADIUS_M = 0.25 # Radius of the wheel in meters (e.g., 5 cm) - USER CHANGE
 
 G = 9.81      # Acceleration due to gravity (m/s^2)
 
 # Simulation time parameters
-DT = 0.01     # Time step (s) - USER CHANGE
+DT = 0.005     # Time step (s) - USER CHANGE
 MAX_ANGLE_TIPPING_RAD = math.radians(90) # Angle at which the machine is considered tipped (90 degrees)
 
 # Motor control parameters
@@ -24,7 +25,7 @@ MAX_MOTOR_TORQUE = 600.0 # Nm (Adjust this value to control how powerful the hor
 
 # --- Initial Conditions ---
 # Random initial angle between -45 and +45 degrees
-initial_angle_deg = random.uniform(-2, 2) # USER CHANGE
+initial_angle_deg = random.uniform(-50, 50) # USER CHANGE
 theta = math.radians(initial_angle_deg) # Current angle of the body (radians)
 theta_dot = 0.0                         # Current angular velocity of the body (radians/s)
 
@@ -81,8 +82,16 @@ time = 0.0
 # Variable to store the current motor torque commanded by the user
 current_motor_torque_command = 0.0 # Nm
 
+
+ProportionalController = ProportionalController(K_p=700.0) 
+PIController = PIController(K_p=300.0, K_i=2000.0)
+PIDController = PIDController(K_p=800.0, K_i=8, K_d=22.0)
+
+
+
 while running:
     # Event handling for keyboard input
+    current_motor_torque_command = PIDController.control_torque(theta, dt=DT)
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
@@ -91,9 +100,10 @@ while running:
                 current_motor_torque_command = -MAX_MOTOR_TORQUE # Apply negative torque (move left)
             elif event.key == pygame.K_d:
                 current_motor_torque_command = MAX_MOTOR_TORQUE # Apply positive torque (move right)
-        elif event.type == pygame.KEYUP:
+        elif event.type == pygame.K_w:
             if event.key == pygame.K_a or event.key == pygame.K_d:
                 current_motor_torque_command = 0.0 # Stop applying torque when key is released
+
 
     if not tipped:
         # 1. Calculate Gravitational Torque
@@ -102,6 +112,12 @@ while running:
         # 2. Corrective Torque on Body (Reaction from Wheel Motor)
         # When the motor applies torque to the wheel, the wheel applies an equal and opposite
         # reaction torque on the body. This is the 'tau_corrective' that influences the body's angle.
+
+        
+
+
+
+        # current_motor_torque_command = ProportionalController.control_torque(theta, dt=DT)
         tau_corrective = -current_motor_torque_command
 
         # 3. Calculate Net Torque on the body
@@ -192,6 +208,6 @@ while running:
     pygame.display.flip() # Update the full display Surface to the screen
 
     # Cap the frame rate
-    clock.tick(60) # USER CHANGE - Changed back to 60 FPS for smoother visuals
+    clock.tick(120) # USER CHANGE - Changed back to 60 FPS for smoother visuals
 
 pygame.quit()
